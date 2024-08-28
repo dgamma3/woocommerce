@@ -35,8 +35,6 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 	public function tearDown(): void {
 		$this->cleanup_filters();
 		delete_option( 'woocommerce_feature_remote_logging_enabled' );
-		delete_transient( RemoteLogger::WC_LATEST_VERSION_TRANSIENT );
-		delete_transient( RemoteLogger::FETCH_LATEST_VERSION_RETRY );
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}wc_rate_limits" );
 		WC_Cache_Helper::invalidate_cache_group( WC_Rate_Limiter::CACHE_GROUP );
@@ -102,6 +100,7 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 				'condition'               => 'outdated version',
 				'setup'                   => function () {
 					$version = WC()->version;
+					// Next major version. (e.g. 7.1.0 -> 8.0.0).
 					$next_version = implode(
 						'.',
 						array_map(
@@ -112,7 +111,7 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 							array_keys( explode( '.', $version ) )
 						)
 					);
-					set_transient( RemoteLogger::WC_LATEST_VERSION_TRANSIENT, $next_version );
+					update_option( RemoteLogger::WC_LATEST_STABLE_VERSION_OPTION, $next_version );
 				},
 				'high variant assignment' => array(
 					'condition' => 'high variant assignment',
@@ -123,17 +122,61 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 	}
 
 	/**
-	 * @testdox Fetch latest WooCommerce version retries on API failure
+	 * @testdox should_current_version_be_logged method returns expected results for different scenarios
+	 * @dataProvider should_current_version_be_logged_provider
+	 *
+	 * @param string|null $option_value The value to set for WC_LATEST_STABLE_VERSION_OPTION
+	 * @param bool        $expected     The expected result of should_current_version_be_logged
+	 * @param string      $message      The assertion message
 	 */
-	public function test_fetch_latest_woocommerce_version_retry() {
-		$this->setup_remote_logging_conditions( true );
-		add_filter( 'plugins_api', fn() => new \WP_Error(), 10, 3 );
-
-		for ( $i = 1; $i <= 4; $i++ ) {
-			$this->sut->is_remote_logging_allowed();
-			$retry_count = get_transient( RemoteLogger::FETCH_LATEST_VERSION_RETRY );
-			$this->assertEquals( min( $i, 3 ), $retry_count );
+	public function test_should_current_version_be_logged( $option_value, $expected, $message ) {
+		if ( null === $option_value ) {
+			delete_option( RemoteLogger::WC_LATEST_STABLE_VERSION_OPTION );
+		} else {
+			update_option( RemoteLogger::WC_LATEST_STABLE_VERSION_OPTION, $option_value );
 		}
+
+		$this->assertEquals(
+			$expected,
+			$this->invoke_private_method( $this->sut, 'should_current_version_be_logged' ),
+			$message
+		);
+	}
+
+	/**
+	 * Data provider for test_should_current_version_be_logged.
+	 *
+	 * @return array[] Test cases with option values, expected results, and messages.
+	 */
+	public function should_current_version_be_logged_provider() {
+		return array(
+			'option not set'               => array( null, true, 'Expected the current version to be logged when the option is not set.' ),
+			'option set to lower version'  => array( '1.0.0', true, 'Expected the current version to be logged when the option is set to a version lower than the current version.' ),
+			'option set to same version'   => array( WC()->version, true, 'Expected the current version to be logged when the option is set to the same version as the current version.' ),
+			'option set to higher version' => array( PHP_INT_MAX . '.0.0', false, 'Expected the current version not to be logged when the option is set to a version higher than the current version.' ),
+		);
+	}
+
+	/**
+	 * @testdox fetch_latest_woocommerce_version method returns the latest version
+	 */
+	public function test_fetch_latest_woocommerce_version() {
+		add_filter(
+			'plugins_api',
+			function ( $result, $action, $args ) use ( $enabled ) {
+				if ( 'plugin_information' === $action && 'woocommerce' === $args->slug ) {
+					return (object) array( 'version' => $enabled ? WC()->version : '9.0.0' );
+				}
+				return $result;
+			},
+			10,
+			3
+		);
+
+		$version = RemoteLogger::fetch_latest_woocommerce_version();
+
+		$this->assertIsString( $version );
+		$this->assertIsString( get_option( RemoteLogger::WC_LATEST_STABLE_VERSION_OPTION ) );
 	}
 
 	/**
@@ -421,17 +464,6 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 		update_option( 'woocommerce_feature_remote_logging_enabled', $enabled ? 'yes' : 'no' );
 		add_filter( 'option_woocommerce_allow_tracking', fn() => 'yes' );
 		add_filter( 'option_woocommerce_remote_variant_assignment', fn() => 5 );
-		add_filter(
-			'plugins_api',
-			function ( $result, $action, $args ) use ( $enabled ) {
-				if ( 'plugin_information' === $action && 'woocommerce' === $args->slug ) {
-					return (object) array( 'version' => $enabled ? WC()->version : '9.0.0' );
-				}
-				return $result;
-			},
-			10,
-			3
-		);
 	}
 
 	/**
