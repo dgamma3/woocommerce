@@ -23,6 +23,7 @@ class RemoteLogger extends \WC_Log_Handler {
 	const LOG_ENDPOINT                    = 'https://public-api.wordpress.com/rest/v1.1/logstash';
 	const RATE_LIMIT_ID                   = 'woocommerce_remote_logging';
 	const RATE_LIMIT_DELAY                = 60; // 1 minute.
+	const WC_LATEST_VERSION_TRANSIENT     = 'latest_woocommerce_version';
 	const WC_LATEST_STABLE_VERSION_OPTION = 'woocommerce_latest_stable_version';
 
 	/**
@@ -320,22 +321,39 @@ class RemoteLogger extends \WC_Log_Handler {
 	/**
 	 * Fetch the latest WooCommerce version using the WordPress API and store it as an option.
 	 *
+	 * This method is triggered by the wc admin daily cron job.
+	 *
 	 * @return string|null
 	 */
 	public static function fetch_latest_woocommerce_version() {
+		$cached_version = get_transient( self::WC_LATEST_VERSION_TRANSIENT );
+		if ( $cached_version ) {
+			return $cached_version;
+		}
+
 		if ( ! function_exists( 'plugins_api' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
 		}
 		// Fetch the latest version from the WordPress API.
-		$plugin_info = plugins_api( 'plugin_information', array( 'slug' => 'woocommerce' ) );
+		$plugin_info = plugins_api(
+			'plugin_information',
+			array(
+				'slug'   => 'woocommerce',
+				'fields' => array( 'version' => true ),
+			)
+		);
 
 		if ( is_wp_error( $plugin_info ) || empty( $plugin_info->version ) ) {
+			wc_get_logger()->error( 'Failed to fetch the latest WooCommerce version.', array( 'source' => 'wc-remote-logger' ) );
 			return null;
 		}
 
 		$latest_version = $plugin_info->version;
 
+		set_transient( self::WC_LATEST_VERSION_TRANSIENT, $latest_version, DAY_IN_SECONDS );
+		// Store the latest version as an option since some sites may not cache the transient properly.
 		update_option( self::WC_LATEST_STABLE_VERSION_OPTION, $latest_version );
+
 		return $latest_version;
 	}
 
