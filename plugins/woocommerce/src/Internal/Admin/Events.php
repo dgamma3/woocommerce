@@ -45,7 +45,7 @@ use Automattic\WooCommerce\Internal\Admin\Schedulers\MailchimpScheduler;
 use Automattic\WooCommerce\Admin\Notes\Note;
 use Automattic\WooCommerce\Admin\Features\PaymentGatewaySuggestions\PaymentGatewaySuggestionsDataSourcePoller;
 use Automattic\WooCommerce\Internal\Admin\RemoteFreeExtensions\RemoteFreeExtensionsDataSourcePoller;
-use Automattic\WooCommerce\Internal\FeaturesUtil;
+use Automattic\WooCommerce\Utilities\FeaturesUtil;
 use Automattic\WooCommerce\Internal\Logging\RemoteLogger;
 
 /**
