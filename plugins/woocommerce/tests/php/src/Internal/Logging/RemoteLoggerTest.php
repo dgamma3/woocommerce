@@ -125,9 +125,9 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 	 * @testdox should_current_version_be_logged method returns expected results for different scenarios
 	 * @dataProvider should_current_version_be_logged_provider
 	 *
-	 * @param string|null $option_value The value to set for WC_LATEST_STABLE_VERSION_OPTION
-	 * @param bool        $expected     The expected result of should_current_version_be_logged
-	 * @param string      $message      The assertion message
+	 * @param string|null $option_value The value to set for WC_LATEST_STABLE_VERSION_OPTION.
+	 * @param bool        $expected     The expected result of should_current_version_be_logged.
+	 * @param string      $message      The assertion message.
 	 */
 	public function test_should_current_version_be_logged( $option_value, $expected, $message ) {
 		if ( null === $option_value ) {
@@ -163,9 +163,9 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 	public function test_fetch_latest_woocommerce_version() {
 		add_filter(
 			'plugins_api',
-			function ( $result, $action, $args ) use ( $enabled ) {
+			function ( $result, $action, $args ) {
 				if ( 'plugin_information' === $action && 'woocommerce' === $args->slug ) {
-					return (object) array( 'version' => $enabled ? WC()->version : '9.0.0' );
+					return (object) array( 'version' => WC()->version );
 				}
 				return $result;
 			},
@@ -175,8 +175,8 @@ class RemoteLoggerTest extends \WC_Unit_Test_Case {
 
 		$version = RemoteLogger::fetch_latest_woocommerce_version();
 
-		$this->assertIsString( $version );
-		$this->assertIsString( get_option( RemoteLogger::WC_LATEST_STABLE_VERSION_OPTION ) );
+		$this->assertEquals( WC()->version, $version );
+		$this->assertEquals( WC()->version, get_option( RemoteLogger::WC_LATEST_STABLE_VERSION_OPTION ) );
 	}
 
 	/**
