@@ -20,11 +20,10 @@ use WC_Log_Levels;
  * @package WooCommerce\Classes
  */
 class RemoteLogger extends \WC_Log_Handler {
-	const LOG_ENDPOINT                = 'https://public-api.wordpress.com/rest/v1.1/logstash';
-	const RATE_LIMIT_ID               = 'woocommerce_remote_logging';
-	const RATE_LIMIT_DELAY            = 60; // 1 minute.
-	const WC_LATEST_VERSION_TRANSIENT = 'latest_woocommerce_version';
-	const FETCH_LATEST_VERSION_RETRY  = 'fetch_latest_woocommerce_version_retry';
+	const LOG_ENDPOINT                    = 'https://public-api.wordpress.com/rest/v1.1/logstash';
+	const RATE_LIMIT_ID                   = 'woocommerce_remote_logging';
+	const RATE_LIMIT_DELAY                = 60; // 1 minute.
+	const WC_LATEST_STABLE_VERSION_OPTION = 'woocommerce_latest_stable_version';
 
 	/**
 	 * Handle a log entry.
@@ -150,7 +149,7 @@ class RemoteLogger extends \WC_Log_Handler {
 			return false;
 		}
 
-		if ( ! $this->is_latest_woocommerce_version() ) {
+		if ( ! $this->should_current_version_be_logged() ) {
 			return false;
 		}
 
@@ -221,7 +220,7 @@ class RemoteLogger extends \WC_Log_Handler {
 				self::LOG_ENDPOINT,
 				array(
 					'body'     => wp_json_encode( $body ),
-					'timeout'  => 2,
+					'timeout'  => 3,
 					'headers'  => array(
 						'Content-Type' => 'application/json',
 					),
@@ -252,18 +251,21 @@ class RemoteLogger extends \WC_Log_Handler {
 	}
 
 	/**
-	 * Check if the current WooCommerce version is the latest.
+	 * Check if remote logging should be allowed based on the current WooCommerce version.
 	 *
 	 * @return bool
 	 */
-	private function is_latest_woocommerce_version() {
-		$latest_wc_version = $this->fetch_latest_woocommerce_version();
-
-		if ( is_null( $latest_wc_version ) ) {
-			return false;
+	private function should_current_version_be_logged() {
+		$latest_wc_version = get_option( self::WC_LATEST_STABLE_VERSION_OPTION );
+		if ( is_string( $latest_wc_version ) ) {
+			return version_compare( WC()->version, $latest_wc_version, '>=' );
 		}
 
-		return version_compare( WC()->version, $latest_wc_version, '>=' );
+		/**
+		 * Assume current version is latest if unable to get latest version.
+		 * May log fixed errors, but preferable to no logging. Rate limiting is in place.
+		 */
+		return true;
 	}
 
 	/**
@@ -316,45 +318,25 @@ class RemoteLogger extends \WC_Log_Handler {
 	}
 
 	/**
-	 * Fetch the latest WooCommerce version using the WordPress API and cache it.
+	 * Fetch the latest WooCommerce version using the WordPress API and store it as an option.
 	 *
 	 * @return string|null
 	 */
-	private function fetch_latest_woocommerce_version() {
-		$cached_version = get_transient( self::WC_LATEST_VERSION_TRANSIENT );
-		if ( $cached_version ) {
-			return $cached_version;
-		}
-
-		$retry_count = get_transient( self::FETCH_LATEST_VERSION_RETRY );
-		if ( false === $retry_count || ! is_numeric( $retry_count ) ) {
-			$retry_count = 0;
-		}
-
-		if ( $retry_count >= 3 ) {
-			return null;
-		}
-
+	public static function fetch_latest_woocommerce_version() {
 		if ( ! function_exists( 'plugins_api' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
 		}
 		// Fetch the latest version from the WordPress API.
 		$plugin_info = plugins_api( 'plugin_information', array( 'slug' => 'woocommerce' ) );
 
-		if ( is_wp_error( $plugin_info ) ) {
-			++$retry_count;
-			set_transient( self::FETCH_LATEST_VERSION_RETRY, $retry_count, HOUR_IN_SECONDS );
+		if ( is_wp_error( $plugin_info ) || empty( $plugin_info->version ) ) {
 			return null;
 		}
 
-		if ( ! empty( $plugin_info->version ) ) {
-			$latest_version = $plugin_info->version;
-			set_transient( self::WC_LATEST_VERSION_TRANSIENT, $latest_version, WEEK_IN_SECONDS );
-			delete_transient( self::FETCH_LATEST_VERSION_RETRY );
-			return $latest_version;
-		}
+		$latest_version = $plugin_info->version;
 
-		return null;
+		update_option( self::WC_LATEST_STABLE_VERSION_OPTION, $latest_version );
+		return $latest_version;
 	}
 
 	/**

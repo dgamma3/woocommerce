@@ -45,6 +45,8 @@ use Automattic\WooCommerce\Internal\Admin\Schedulers\MailchimpScheduler;
 use Automattic\WooCommerce\Admin\Notes\Note;
 use Automattic\WooCommerce\Admin\Features\PaymentGatewaySuggestions\PaymentGatewaySuggestionsDataSourcePoller;
 use Automattic\WooCommerce\Internal\Admin\RemoteFreeExtensions\RemoteFreeExtensionsDataSourcePoller;
+use Automattic\WooCommerce\Internal\FeaturesUtil;
+use Automattic\WooCommerce\Internal\Logging\RemoteLogger;
 
 /**
  * Events Class.
@@ -156,6 +158,10 @@ class Events {
 
 		if ( Features::is_enabled( 'core-profiler' ) ) {
 			( new MailchimpScheduler() )->run();
+		}
+
+		if ( FeaturesUtil::feature_is_enabled( 'remote_logging' ) ) {
+			RemoteLogger::fetch_latest_woocommerce_version();
 		}
 	}
 
