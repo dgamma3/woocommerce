@@ -74,6 +74,7 @@ function toggle_remote_logging( $request ) {
 		update_option( 'woocommerce_feature_remote_logging_enabled', 'yes' );
 		update_option( 'woocommerce_allow_tracking', 'yes' );
 		update_option( 'woocommerce_remote_variant_assignment', 1 );
+		update_option( RemoteLogger::WC_LATEST_STABLE_VERSION_OPTION, WC()->version );
 	} else {
 		update_option( 'woocommerce_feature_remote_logging_enabled', 'no' );
 	}
